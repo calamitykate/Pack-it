@@ -1,5 +1,5 @@
 // Offline support: serve the app from cache, refresh the cache in the background.
-const CACHE = 'packit-v1';
+const CACHE = 'packit-v2';
 const ASSETS = [
   './',
   './index.html',

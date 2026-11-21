@@ -2,7 +2,8 @@
 
 A simple iPhone app (a web app you add to your Home Screen) for keeping track of moving boxes:
 
-- **Automatic box labels** made from the room and what's inside, e.g. `Dine-001-sent` = Dining room, box 1, sentimental.
+- **Automatic box labels** made from the room and what's inside, e.g. `Dine-001-croc` = Dining room, box 1, crockery.
+  Tick **💛 Sentimental** and it becomes `Dine-001-croc-sent`.
   Numbers count up separately for each room. You can type your own label if a box is already labelled.
 - **Snap a photo** of the box label (and the contents, if it helps). You can attach as many photos as you like.
 - **List the contents**, one item per line. You can also note where each box is going (Keep, Family member, Donate, Sell…), who it's for, and whether it's fragile.

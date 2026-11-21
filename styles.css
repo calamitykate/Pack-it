@@ -245,3 +245,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); }
   transition: opacity .2s, transform .2s; max-width: 90vw; text-align: center;
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.badge.sent { background: #fcefd4; color: #9a6a12; }
+.check.sent input { accent-color: #d29a2a; }
+.check em { font-style: normal; font-size: 14px; }

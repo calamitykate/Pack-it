@@ -16,7 +16,7 @@ const DEFAULT_ROOMS = [
 ].map(([name, code]) => ({ name, code }));
 
 const DEFAULT_CATEGORIES = [
-  ['Sentimental', 'sent'], ['Photos & albums', 'phot'], ['Documents & papers', 'docs'],
+  ['Photos & albums', 'phot'], ['Documents & papers', 'docs'],
   ['Jewellery & valuables', 'valu'], ['Kitchenware', 'kitc'], ['Crockery & glass', 'croc'],
   ['Books', 'book'], ['Clothing', 'clot'], ['Linen & bedding', 'lin'],
   ['Ornaments & decor', 'deco'], ['Artwork & frames', 'art'], ['Electronics', 'elec'],
@@ -43,8 +43,10 @@ const cleanCode = (s) => String(s || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6
 const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const today = () => new Date().toISOString().slice(0, 10);
 
-function makeLabel(room, number, cat) {
-  return `${room}-${pad3(number)}-${cat}`;
+// e.g. Dine-001-croc, or Dine-001-croc-sent when the box is sentimental.
+const SENT_CODE = 'sent';
+function makeLabel(room, number, cat, sentimental) {
+  return `${room}-${pad3(number)}-${cat}${sentimental ? '-' + SENT_CODE : ''}`;
 }
 
 function toast(msg, ms = 2600) {
@@ -244,7 +246,7 @@ window.addEventListener('hashchange', route);
 
 function matches(b, q) {
   if (!q) return true;
-  const hay = [b.label, b.roomName, b.catName, b.contents, b.dest, b.destNote, b.notes].join('\n').toLowerCase();
+  const hay = [b.label, b.roomName, b.catName, b.sentimental ? 'sentimental' : '', b.contents, b.dest, b.destNote, b.notes].join('\n').toLowerCase();
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
 
@@ -342,7 +344,7 @@ function emptyHTML(q) {
       <div class="empty-icon" aria-hidden="true">📦</div>
       <p><strong>No boxes yet.</strong></p>
       <p>Tap <b>＋ New box</b>, pick the room and what's going in it, and Pack-it will suggest a label
-         like <code>Dine-001-sent</code> to write on the box. Snap a photo, list what's inside, and you're done.</p>
+         like <code>Dine-001-croc</code> to write on the box (tick 💛 Sentimental and it becomes <code>Dine-001-croc-sent</code>). Snap a photo, list what's inside, and you're done.</p>
       <p class="soft">Take it one box at a time.</p>
     </div>`;
 }
@@ -361,7 +363,7 @@ function cardHTML(b, q) {
     <a class="card" href="#/box/${esc(b.id)}">
       <div class="thumb">${p ? `<img src="${photoURL(p)}" alt="" loading="lazy">` : '<span aria-hidden="true">📦</span>'}</div>
       <div class="card-body">
-        <div class="label-text">${esc(b.label)}${b.fragile ? ' <span class="badge fragile">Fragile</span>' : ''}</div>
+        <div class="label-text">${esc(b.label)}${b.sentimental ? ' <span class="badge sent">💛</span>' : ''}${b.fragile ? ' <span class="badge fragile">Fragile</span>' : ''}</div>
         <div class="meta">${esc(b.roomName)} · ${esc(b.catName)} · ${items.length} item${items.length === 1 ? '' : 's'}</div>
         ${snippet ? `<div class="snippet">${esc(snippet)}</div>` : ''}
       </div>
@@ -397,6 +399,7 @@ function renderDetail(id) {
       <div class="big-label">${esc(b.label)}</div>
       <div class="meta">${esc(b.roomName)} · ${esc(b.catName)}</div>
       <div class="badges">
+        ${b.sentimental ? '<span class="badge sent">💛 Sentimental</span>' : ''}
         ${b.fragile ? '<span class="badge fragile">Fragile</span>' : ''}
         ${b.dest ? `<span class="badge dest">${esc(b.dest)}${b.destNote ? ' — ' + esc(b.destNote) : ''}</span>` : ''}
       </div>
@@ -427,7 +430,7 @@ function renderDetail(id) {
     back: () => go('#/'),
     edit: () => go('#/edit/' + b.id),
     photo: (el) => openViewer(b.photos[+el.dataset.i], b.label),
-    next: () => go(`#/new?room=${encodeURIComponent(b.room)}&cat=${encodeURIComponent(b.cat)}`),
+    next: () => go(`#/new?room=${encodeURIComponent(b.room)}&cat=${encodeURIComponent(b.cat)}${b.sentimental ? '&sent=1' : ''}`),
     delete: async () => {
       if (!confirm(`Delete box ${b.label}? This can't be undone.`)) return;
       await dbDelBox(b.id);
@@ -448,16 +451,17 @@ function renderForm(id, params) {
       const b = S.boxes.find((x) => x.id === id);
       if (!b) { go('#/'); return; }
       S.draft = { ...b, photos: [...(b.photos || [])] };
-      S.draft.labelCustom = b.label !== makeLabel(b.room, b.number, b.cat);
+      S.draft.labelCustom = b.label !== makeLabel(b.room, b.number, b.cat, b.sentimental);
     } else {
       const rooms = S.settings.rooms, cats = S.settings.categories;
       const room = (params && params.get('room')) || S.settings.lastRoom || (rooms[0] && rooms[0].code) || 'Room';
       const cat = (params && params.get('cat')) || S.settings.lastCat || (cats[0] && cats[0].code) || 'misc';
       S.draft = {
         id: null, room, cat, number: nextNumber(room), labelCustom: false,
+        sentimental: !!(params && params.get('sent') === '1'),
         contents: '', dest: 'Undecided', destNote: '', fragile: false, notes: '', photos: [],
       };
-      S.draft.label = makeLabel(room, S.draft.number, cat);
+      S.draft.label = makeLabel(room, S.draft.number, cat, S.draft.sentimental);
     }
     S.draftKey = key;
     S.draftDirty = false;
@@ -497,6 +501,11 @@ function renderForm(id, params) {
         </select>
       </label>
     </div>
+
+    <label class="check sent">
+      <input type="checkbox" id="sentimental" ${d.sentimental ? 'checked' : ''}>
+      <span>💛 Sentimental <em class="soft">(adds -sent)</em></span>
+    </label>
 
     <section class="field">
       <span>Photos</span>
@@ -550,7 +559,7 @@ function renderForm(id, params) {
   const labelInput = $('#label');
   const autoBtn = $('#autoLabel');
   const syncLabel = () => {
-    const auto = makeLabel(d.room, d.number, d.cat);
+    const auto = makeLabel(d.room, d.number, d.cat, d.sentimental);
     if (!d.labelCustom) { d.label = auto; labelInput.value = auto; }
     autoBtn.hidden = !d.labelCustom;
   };
@@ -558,7 +567,7 @@ function renderForm(id, params) {
 
   labelInput.addEventListener('input', () => {
     d.label = labelInput.value;
-    d.labelCustom = d.label !== makeLabel(d.room, d.number, d.cat);
+    d.labelCustom = d.label !== makeLabel(d.room, d.number, d.cat, d.sentimental);
     autoBtn.hidden = !d.labelCustom;
     dirty();
   });
@@ -573,6 +582,7 @@ function renderForm(id, params) {
   }
   $('#dest').addEventListener('change', (e) => { d.dest = e.target.value; dirty(); });
   $('#fragile').addEventListener('change', (e) => { d.fragile = e.target.checked; dirty(); });
+  $('#sentimental').addEventListener('change', (e) => { d.sentimental = e.target.checked; syncLabel(); dirty(); });
 
   const renderPhotos = () => {
     $('#photos').innerHTML = d.photos.map((p, i) => `
@@ -644,6 +654,7 @@ async function saveDraft() {
     dest: d.dest || 'Undecided',
     destNote: (d.destNote || '').trim(),
     fragile: !!d.fragile,
+    sentimental: !!d.sentimental,
     notes: (d.notes || '').trim(),
     photos: d.photos,
     createdAt: d.createdAt || now,
@@ -715,8 +726,8 @@ function renderSettings() {
       <p class="tiny soft" id="storageInfo"></p>
     </section>
 
-    ${listEditor('rooms', 'Rooms', 'The code is the first part of the label, e.g. <code>Dine</code>-001-sent.')}
-    ${listEditor('categories', 'Contents categories', 'The code is the last part of the label, e.g. Dine-001-<code>sent</code>.')}
+    ${listEditor('rooms', 'Rooms', 'The code is the first part of the label, e.g. <code>Dine</code>-001-croc.')}
+    ${listEditor('categories', 'Contents categories', 'The code comes after the number, e.g. Dine-001-<code>croc</code>. Sentimental is a separate tick-box that adds -sent on the end.')}
 
     <section class="panel">
       <h2>About</h2>
@@ -919,6 +930,7 @@ async function buildWorkbook(boxes) {
     { header: 'Items', key: 'count', width: 7 },
     { header: 'Destination', key: 'dest', width: 14 },
     { header: 'For / where', key: 'destNote', width: 18 },
+    { header: 'Sentimental', key: 'sentimental', width: 12 },
     { header: 'Fragile', key: 'fragile', width: 8 },
     { header: 'Notes', key: 'notes', width: 30 },
     { header: 'Packed', key: 'packed', width: 13 },
@@ -926,7 +938,7 @@ async function buildWorkbook(boxes) {
     { header: 'Photo', key: 'img', width: 18 },
   ];
   headerStyle(ws);
-  const PHOTO_COL = 11; // zero-based index of the "Photo" column (L)
+  const PHOTO_COL = 12; // zero-based index of the "Photo" column (M)
   const IMG_BOX = 120;  // px
 
   for (const b of sorted) {
@@ -939,6 +951,7 @@ async function buildWorkbook(boxes) {
       count: items.length,
       dest: b.dest,
       destNote: b.destNote,
+      sentimental: b.sentimental ? 'Yes' : '',
       fragile: b.fragile ? 'Yes' : '',
       notes: b.notes,
       packed: new Date(b.createdAt),
@@ -960,7 +973,7 @@ async function buildWorkbook(boxes) {
     }
     row.height = height;
   }
-  ws.autoFilter = { from: 'A1', to: 'L1' };
+  ws.autoFilter = { from: 'A1', to: 'M1' };
 
   // Sheet 2: one row per item — handy for filtering and searching in Excel.
   const wi = wb.addWorksheet('Items', { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -969,16 +982,17 @@ async function buildWorkbook(boxes) {
     { header: 'Box label', key: 'label', width: 18 },
     { header: 'Room', key: 'room', width: 16 },
     { header: 'Category', key: 'cat', width: 20 },
+    { header: 'Sentimental', key: 'sentimental', width: 12 },
     { header: 'Destination', key: 'dest', width: 14 },
     { header: 'For / where', key: 'destNote', width: 18 },
   ];
   headerStyle(wi);
   for (const b of sorted) {
     for (const item of itemsOf(b)) {
-      wi.addRow({ item, label: b.label, room: b.roomName, cat: b.catName, dest: b.dest, destNote: b.destNote });
+      wi.addRow({ item, label: b.label, room: b.roomName, cat: b.catName, sentimental: b.sentimental ? 'Yes' : '', dest: b.dest, destNote: b.destNote });
     }
   }
-  wi.autoFilter = { from: 'A1', to: 'F1' };
+  wi.autoFilter = { from: 'A1', to: 'G1' };
 
   // Sheet 3: summary by room.
   const wr = wb.addWorksheet('By room');
@@ -986,14 +1000,15 @@ async function buildWorkbook(boxes) {
     { header: 'Room', key: 'room', width: 20 },
     { header: 'Boxes', key: 'boxes', width: 8 },
     { header: 'Items', key: 'items', width: 8 },
+    { header: 'Sentimental boxes', key: 'sentimental', width: 16 },
     { header: 'Fragile boxes', key: 'fragile', width: 13 },
     { header: 'Labels', key: 'labels', width: 60 },
   ];
   headerStyle(wr);
   const byRoom = new Map();
   for (const b of sorted) {
-    const r = byRoom.get(b.roomName) || { room: b.roomName, boxes: 0, items: 0, fragile: 0, labels: [] };
-    r.boxes++; r.items += itemsOf(b).length; if (b.fragile) r.fragile++; r.labels.push(b.label);
+    const r = byRoom.get(b.roomName) || { room: b.roomName, boxes: 0, items: 0, sentimental: 0, fragile: 0, labels: [] };
+    r.boxes++; r.items += itemsOf(b).length; if (b.fragile) r.fragile++; if (b.sentimental) r.sentimental++; r.labels.push(b.label);
     byRoom.set(b.roomName, r);
   }
   for (const r of [...byRoom.values()].sort((a, b) => a.room.localeCompare(b.room))) {
@@ -1003,6 +1018,7 @@ async function buildWorkbook(boxes) {
   const total = wr.addRow({
     room: 'Total', boxes: sorted.length,
     items: sorted.reduce((n, b) => n + itemsOf(b).length, 0),
+    sentimental: sorted.filter((b) => b.sentimental).length,
     fragile: sorted.filter((b) => b.fragile).length,
   });
   total.font = { bold: true };
@@ -1104,12 +1120,26 @@ async function restoreBackup(input) {
 
 // ---------- Start ------------------------------------------------------------
 
+// "Sentimental" used to be a category; it is now a separate tick-box.
+// Existing boxes in that category get the tick and keep their labels.
+async function migrateSentimental() {
+  if (S.settings.sentimentalFlag) return;
+  S.settings.categories = S.settings.categories.filter((c) => c.code !== SENT_CODE);
+  const changed = S.boxes.filter((b) => b.cat === SENT_CODE && !b.sentimental);
+  changed.forEach((b) => { b.sentimental = true; });
+  if (changed.length) await dbPutBoxes(changed);
+  if (S.settings.lastCat === SENT_CODE) delete S.settings.lastCat;
+  S.settings.sentimentalFlag = true;
+  await saveSettings();
+}
+
 async function init() {
   try {
     S.settings = (await kvGet('settings')) || {};
     if (!Array.isArray(S.settings.rooms)) S.settings.rooms = DEFAULT_ROOMS.map((r) => ({ ...r }));
     if (!Array.isArray(S.settings.categories)) S.settings.categories = DEFAULT_CATEGORIES.map((c) => ({ ...c }));
     S.boxes = await dbAllBoxes();
+    await migrateSentimental();
   } catch (err) {
     $('#app').innerHTML = `<div class="empty"><p><strong>Pack-it couldn't open its storage.</strong></p>
       <p>If you're in a Private Browsing tab, open it in a normal Safari tab instead.</p>
