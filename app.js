@@ -681,6 +681,7 @@ async function saveDraft() {
   S.draft = null;
   toast(`Saved ${box.label}`);
   location.replace('#/box/' + box.id);
+  if (S.reloadAfterSave) setTimeout(() => location.reload(), 300);
 }
 
 // ---------- Settings -------------------------------------------------------
@@ -1133,6 +1134,25 @@ async function migrateSentimental() {
   await saveSettings();
 }
 
+// Pick up new versions of the app: check whenever it's opened, and reload
+// once the new version is ready (unless a box is being edited).
+function setupUpdates() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    if (S.draft) { toast('Pack-it has been updated — it will refresh after you save'); S.reloadAfterSave = true; return; }
+    reloaded = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+}
+
 async function init() {
   try {
     S.settings = (await kvGet('settings')) || {};
@@ -1147,9 +1167,7 @@ async function init() {
     return;
   }
   route();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  setupUpdates();
   if (S.boxes.length) requestPersist();
 }
 
