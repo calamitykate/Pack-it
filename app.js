@@ -37,7 +37,15 @@ const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const itemsOf = (b) => (b.contents || '').split('\n').map((s) => s.trim()).filter(Boolean);
+// Box contents: [{ name, qty }]. Older boxes stored a plain list in `contents`.
+const cleanQty = (q) => { const n = parseInt(q, 10); return n > 0 ? Math.min(n, 99999) : 1; };
+function itemsOf(b) {
+  if (Array.isArray(b.items)) return b.items.filter((it) => it && it.name);
+  return (b.contents || '').split('\n').map((s) => s.trim()).filter(Boolean).map((name) => ({ name, qty: 1 }));
+}
+const itemText = (it) => (it.qty > 1 ? `${it.name} × ${it.qty}` : it.name);
+const qtyTotal = (items) => items.reduce((n, it) => n + (it.qty || 1), 0);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const pad3 = (n) => String(n).padStart(3, '0');
 const cleanCode = (s) => String(s || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6);
 const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -246,7 +254,7 @@ window.addEventListener('hashchange', route);
 
 function matches(b, q) {
   if (!q) return true;
-  const hay = [b.label, b.roomName, b.catName, b.sentimental ? 'sentimental' : '', b.contents, b.dest, b.destNote, b.notes].join('\n').toLowerCase();
+  const hay = [b.label, b.roomName, b.catName, b.sentimental ? 'sentimental' : '', itemsOf(b).map((it) => it.name).join('\n'), b.dest, b.destNote, b.notes].join('\n').toLowerCase();
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
 
@@ -257,7 +265,7 @@ function renderList() {
   if (S.sort === 'label') list.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   else list.sort((a, b) => b.createdAt - a.createdAt);
 
-  const totalItems = S.boxes.reduce((n, b) => n + itemsOf(b).length, 0);
+  const totalItems = S.boxes.reduce((n, b) => n + qtyTotal(itemsOf(b)), 0);
   const roomsInUse = [...new Map(S.boxes.map((b) => [b.room, b.roomName])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
 
@@ -353,10 +361,10 @@ function cardHTML(b, q) {
   const items = itemsOf(b);
   let snippet;
   if (q) {
-    const hits = items.filter((it) => q.split(/\s+/).some((w) => it.toLowerCase().includes(w)));
-    snippet = (hits.length ? hits : items).slice(0, 3).join(' · ');
+    const hits = items.filter((it) => q.split(/\s+/).some((w) => it.name.toLowerCase().includes(w)));
+    snippet = (hits.length ? hits : items).slice(0, 3).map(itemText).join(' · ');
   } else {
-    snippet = items.slice(0, 4).join(' · ');
+    snippet = items.slice(0, 4).map(itemText).join(' · ');
   }
   const p = b.photos && b.photos[0];
   return `
@@ -364,7 +372,7 @@ function cardHTML(b, q) {
       <div class="thumb">${p ? `<img src="${photoURL(p)}" alt="" loading="lazy">` : '<span aria-hidden="true">📦</span>'}</div>
       <div class="card-body">
         <div class="label-text">${esc(b.label)}${b.sentimental ? ' <span class="badge sent">💛</span>' : ''}${b.fragile ? ' <span class="badge fragile">Fragile</span>' : ''}</div>
-        <div class="meta">${esc(b.roomName)} · ${esc(b.catName)} · ${items.length} item${items.length === 1 ? '' : 's'}</div>
+        <div class="meta">${esc(b.roomName)} · ${esc(b.catName)} · ${plural(qtyTotal(items), 'item')}</div>
         ${snippet ? `<div class="snippet">${esc(snippet)}</div>` : ''}
       </div>
       ${b.dest && b.dest !== 'Undecided' ? `<span class="badge dest">${esc(b.dest)}</span>` : ''}
@@ -411,8 +419,8 @@ function renderDetail(id) {
       </section>` : ''}
 
     <section class="panel">
-      <h2>Contents <span class="count">${items.length}</span></h2>
-      ${items.length ? `<ul class="items">${items.map((it) => `<li>${esc(it)}</li>`).join('')}</ul>` : '<p class="soft">Nothing listed yet.</p>'}
+      <h2>Contents <span class="count">${qtyTotal(items)}</span></h2>
+      ${items.length ? `<ul class="items">${items.map((it) => `<li><span>${esc(it.name)}</span><span class="qty">× ${it.qty || 1}</span></li>`).join('')}</ul>` : '<p class="soft">Nothing listed yet.</p>'}
     </section>
 
     ${b.notes ? `<section class="panel"><h2>Notes</h2><p class="pre">${esc(b.notes)}</p></section>` : ''}
@@ -450,7 +458,7 @@ function renderForm(id, params) {
     if (id) {
       const b = S.boxes.find((x) => x.id === id);
       if (!b) { go('#/'); return; }
-      S.draft = { ...b, photos: [...(b.photos || [])] };
+      S.draft = { ...b, photos: [...(b.photos || [])], items: itemsOf(b).map((it) => ({ ...it })) };
       S.draft.labelCustom = b.label !== makeLabel(b.room, b.number, b.cat, b.sentimental);
     } else {
       const rooms = S.settings.rooms, cats = S.settings.categories;
@@ -459,7 +467,7 @@ function renderForm(id, params) {
       S.draft = {
         id: null, room, cat, number: nextNumber(room), labelCustom: false,
         sentimental: !!(params && params.get('sent') === '1'),
-        contents: '', dest: 'Undecided', destNote: '', fragile: false, notes: '', photos: [],
+        items: [], dest: 'Undecided', destNote: '', fragile: false, notes: '', photos: [],
       };
       S.draft.label = makeLabel(room, S.draft.number, cat, S.draft.sentimental);
     }
@@ -523,10 +531,12 @@ function renderForm(id, params) {
       <p class="tiny soft" id="photoStatus">Snap the label on the box, and the contents too if it helps.</p>
     </section>
 
-    <label class="field">
-      <span>Contents <em class="soft">— one item per line</em></span>
-      <textarea id="contents" rows="7" placeholder="Mum's blue teapot&#10;Wedding album&#10;Dad's war medals">${esc(d.contents)}</textarea>
-    </label>
+    <section class="field">
+      <span>Contents <em class="soft" id="itemTotal"></em></span>
+      <div class="item-head tiny soft"><span>Item</span><span>Qty</span><span></span></div>
+      <div id="items" class="item-rows"></div>
+      <button class="btn small" data-a="add-item">＋ Add item</button>
+    </section>
 
     <div class="row2">
       <label class="field">
@@ -577,12 +587,66 @@ function renderForm(id, params) {
     syncLabel(); dirty();
   });
   $('#cat').addEventListener('change', (e) => { d.cat = e.target.value; syncLabel(); dirty(); });
-  for (const f of ['contents', 'destNote', 'notes']) {
+  for (const f of ['destNote', 'notes']) {
     $('#' + f).addEventListener('input', (e) => { d[f] = e.target.value; dirty(); });
   }
   $('#dest').addEventListener('change', (e) => { d.dest = e.target.value; dirty(); });
   $('#fragile').addEventListener('change', (e) => { d.fragile = e.target.checked; dirty(); });
   $('#sentimental').addEventListener('change', (e) => { d.sentimental = e.target.checked; syncLabel(); dirty(); });
+
+  // ----- Contents rows: item name + quantity. There is always one empty row at the end.
+  const itemsWrap = $('#items');
+  const rowHTML = (it, i) => `
+    <div class="item-row" data-i="${i}">
+      <input class="it-name" value="${esc(it.name)}" placeholder="${i === 0 ? 'e.g. Astra crystal lowballs' : 'Item'}"
+             enterkeyhint="next" autocapitalize="sentences" aria-label="Item ${i + 1}">
+      <input class="it-qty" value="${it.name && it.qty ? esc(it.qty) : ''}" placeholder="1" inputmode="numeric" pattern="[0-9]*"
+             enterkeyhint="next" aria-label="Quantity for item ${i + 1}">
+      <button class="icon-btn small" data-a="del-item" data-i="${i}" aria-label="Remove item" ${it.name ? '' : 'hidden'}>×</button>
+    </div>`;
+  const updateTotal = () => {
+    const filled = d.items.filter((it) => it.name.trim());
+    $('#itemTotal').textContent = filled.length ? `— ${plural(qtyTotal(filled), 'item')}` : '';
+  };
+  const ensureBlankRow = () => {
+    const last = d.items[d.items.length - 1];
+    if (!last || last.name.trim()) {
+      d.items.push({ name: '', qty: 1 });
+      itemsWrap.insertAdjacentHTML('beforeend', rowHTML(d.items[d.items.length - 1], d.items.length - 1));
+    }
+  };
+  const renderItems = () => {
+    d.items = d.items.filter((it) => it.name.trim());
+    itemsWrap.innerHTML = d.items.map(rowHTML).join('');
+    ensureBlankRow();
+    updateTotal();
+  };
+  itemsWrap.addEventListener('input', (e) => {
+    const row = e.target.closest('.item-row');
+    const it = d.items[+row.dataset.i];
+    if (e.target.classList.contains('it-name')) {
+      it.name = e.target.value;
+      $('[data-a="del-item"]', row).hidden = !it.name;
+      if (it.name.trim()) ensureBlankRow();
+    } else {
+      e.target.value = e.target.value.replace(/[^0-9]/g, '');
+      it.qty = cleanQty(e.target.value);
+    }
+    updateTotal(); dirty();
+  });
+  itemsWrap.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const row = e.target.closest('.item-row');
+    if (e.target.classList.contains('it-name')) {
+      $('.it-qty', row).focus();
+    } else {
+      ensureBlankRow();
+      const next = row.nextElementSibling;
+      if (next) $('.it-name', next).focus();
+    }
+  });
+  renderItems();
 
   const renderPhotos = () => {
     $('#photos').innerHTML = d.photos.map((p, i) => `
@@ -617,6 +681,15 @@ function renderForm(id, params) {
     },
     save: saveDraft,
     'auto-label': () => { d.labelCustom = false; syncLabel(); },
+    'add-item': () => {
+      ensureBlankRow();
+      const rows = $$('.item-row', itemsWrap);
+      $('.it-name', rows[rows.length - 1]).focus();
+    },
+    'del-item': (el) => {
+      d.items.splice(+el.dataset.i, 1);
+      dirty(); renderItems();
+    },
     view: (el) => openViewer(d.photos[+el.dataset.i], d.label),
     'del-photo': (el) => {
       if (!confirm('Remove this photo?')) return;
@@ -650,7 +723,7 @@ async function saveDraft() {
     number,
     cat: d.cat,
     catName: cat ? cat.name : (d.catName || d.cat),
-    contents: (d.contents || '').replace(/\n{3,}/g, '\n\n').trim(),
+    items: (d.items || []).map((it) => ({ name: it.name.trim(), qty: cleanQty(it.qty) })).filter((it) => it.name),
     dest: d.dest || 'Undecided',
     destNote: (d.destNote || '').trim(),
     fragile: !!d.fragile,
@@ -948,8 +1021,8 @@ async function buildWorkbook(boxes) {
       label: b.label,
       room: b.roomName,
       cat: b.catName,
-      contents: items.join('\n'),
-      count: items.length,
+      contents: items.map(itemText).join('\n'),
+      count: qtyTotal(items),
       dest: b.dest,
       destNote: b.destNote,
       sentimental: b.sentimental ? 'Yes' : '',
@@ -980,6 +1053,7 @@ async function buildWorkbook(boxes) {
   const wi = wb.addWorksheet('Items', { views: [{ state: 'frozen', ySplit: 1 }] });
   wi.columns = [
     { header: 'Item', key: 'item', width: 40 },
+    { header: 'Qty', key: 'qty', width: 6 },
     { header: 'Box label', key: 'label', width: 18 },
     { header: 'Room', key: 'room', width: 16 },
     { header: 'Category', key: 'cat', width: 20 },
@@ -989,11 +1063,11 @@ async function buildWorkbook(boxes) {
   ];
   headerStyle(wi);
   for (const b of sorted) {
-    for (const item of itemsOf(b)) {
-      wi.addRow({ item, label: b.label, room: b.roomName, cat: b.catName, sentimental: b.sentimental ? 'Yes' : '', dest: b.dest, destNote: b.destNote });
+    for (const it of itemsOf(b)) {
+      wi.addRow({ item: it.name, qty: it.qty || 1, label: b.label, room: b.roomName, cat: b.catName, sentimental: b.sentimental ? 'Yes' : '', dest: b.dest, destNote: b.destNote });
     }
   }
-  wi.autoFilter = { from: 'A1', to: 'G1' };
+  wi.autoFilter = { from: 'A1', to: 'H1' };
 
   // Sheet 3: summary by room.
   const wr = wb.addWorksheet('By room');
@@ -1009,7 +1083,7 @@ async function buildWorkbook(boxes) {
   const byRoom = new Map();
   for (const b of sorted) {
     const r = byRoom.get(b.roomName) || { room: b.roomName, boxes: 0, items: 0, sentimental: 0, fragile: 0, labels: [] };
-    r.boxes++; r.items += itemsOf(b).length; if (b.fragile) r.fragile++; if (b.sentimental) r.sentimental++; r.labels.push(b.label);
+    r.boxes++; r.items += qtyTotal(itemsOf(b)); if (b.fragile) r.fragile++; if (b.sentimental) r.sentimental++; r.labels.push(b.label);
     byRoom.set(b.roomName, r);
   }
   for (const r of [...byRoom.values()].sort((a, b) => a.room.localeCompare(b.room))) {
@@ -1018,7 +1092,7 @@ async function buildWorkbook(boxes) {
   }
   const total = wr.addRow({
     room: 'Total', boxes: sorted.length,
-    items: sorted.reduce((n, b) => n + itemsOf(b).length, 0),
+    items: sorted.reduce((n, b) => n + qtyTotal(itemsOf(b)), 0),
     sentimental: sorted.filter((b) => b.sentimental).length,
     fragile: sorted.filter((b) => b.fragile).length,
   });

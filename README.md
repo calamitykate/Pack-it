@@ -6,9 +6,9 @@ A simple iPhone app (a web app you add to your Home Screen) for keeping track of
   Tick **💛 Sentimental** and it becomes `Dine-001-croc-sent`.
   Numbers count up separately for each room. You can type your own label if a box is already labelled.
 - **Snap a photo** of the box label (and the contents, if it helps). You can attach as many photos as you like.
-- **List the contents**, one item per line. You can also note where each box is going (Keep, Family member, Donate, Sell…), who it's for, and whether it's fragile.
+- **List the contents** with a quantity for each item (e.g. Astra crystal lowballs × 6). Tap Return to jump from item to quantity to the next row. You can also note where each box is going (Keep, Family member, Donate, Sell…), who it's for, and whether it's fragile.
 - **Search everything**: type "medals" and see which box they're in.
-- **Export to Excel** (.xlsx) with three sheets: *Boxes* (one row per box, with a photo), *Items* (one row per item, easy to filter), and *By room* (totals).
+- **Export to Excel** (.xlsx) with three sheets: *Boxes* (one row per box, with a photo), *Items* (one row per item with its quantity, easy to filter), and *By room* (totals).
 - **Backup & restore**: one file holding everything, full-size photos included.
 - Works **offline**. All data stays **on the phone**; nothing is uploaded.
 

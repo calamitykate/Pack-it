@@ -1,6 +1,6 @@
 // Offline support. When online, always fetch the latest version (so updates show
 // straight away); when offline or the connection is very slow, use the saved copy.
-const CACHE = 'packit-v3';
+const CACHE = 'packit-v4';
 const ASSETS = [
   './',
   './index.html',

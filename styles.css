@@ -249,3 +249,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--brand); }
 .badge.sent { background: #fcefd4; color: #9a6a12; }
 .check.sent input { accent-color: #d29a2a; }
 .check em { font-style: normal; font-size: 14px; }
+
+/* ----- Contents rows (item + quantity) ----- */
+.item-head, .item-row { display: grid; grid-template-columns: 1fr 64px 36px; gap: 8px; align-items: center; }
+.item-head { margin: 0 2px 4px; }
+.item-rows { display: grid; gap: 8px; margin-bottom: 10px; }
+.item-row input {
+  width: 100%; font: inherit; font-size: 17px; color: var(--ink);
+  background: var(--card); border: 1.5px solid var(--line); border-radius: 12px;
+  padding: 11px 12px; outline: none; -webkit-appearance: none; appearance: none;
+}
+.item-row .it-qty { text-align: center; padding: 11px 4px; }
+.items li { display: flex; justify-content: space-between; gap: 12px; }
+.items .qty { color: var(--soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
